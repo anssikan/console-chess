@@ -15,19 +15,26 @@ def run_client(host: str, port: int, name: str) -> None:
         connection = JsonConnection(client_socket)
 
         # wait for server welcome message
-        server_message = connection.receive()
-        print(f"Server sent: {server_message}")
+        message = connection.receive()
+        print(f"Server sent: {message}")
 
         # send expected name message
-        name_message = {
+        connection.send({
             "type": "join",
             "name": name
-        }
-        connection.send(name_message)
+        })
 
         # wait for server reply
-        server_message = connection.receive()
-        print(f"Server sent: {server_message}")
+        message = connection.receive()
+        print(f"Server sent: {message}")
+
+        # get color 
+        color = message.get("color")
+        print(f"i will play {color}")
+
+        # wait for game to start!!
+        message = connection.receive()
+        print(f"Server sent: {message}")
 
 def main() -> None:
     # example command:
@@ -35,11 +42,11 @@ def main() -> None:
 
     # reading options
     parser = argparse.ArgumentParser(description="console chess server")
-    parser.add_arguement("--host", default="127.0.0.1")
-    parser.add_arguement("--port", type=int, default=5000)
-    parser.add_arguement("--name", required=True)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--name", required=True)
 
-    # get the arguements
+    # get the arguments
     args = parser.parse_args()
 
     # run client logic

@@ -3,65 +3,103 @@ import socket
 
 from chess.protocol import JsonConnection
 
-def handle_client(client_socket: socket.socket, address: tuple[str,int]) -> None:
+def accept_player(client_socket: socket.socket, color: str) -> tuple[socket.socket, JsonConnection, str, tuple[str, int]]:
     '''
-    handles one client connection
-    address is ("IP", port)
+    wait for a player to connect
+    return the socket, JSON helper, player name and address
     '''
 
-    # show that there is a new connection
-    print(f"client connection: {address}")
+    # show what the server is waiting for
+    print(f"waiting for {color} player...")
 
-    # using helper class 
+    # wait until the connection here, accept is blocking
+    client_socket, address = server_socket.accept()
+
+    # show the connection
+    print(f"{color} player connected from {address}")
+
+    # using helper class to send/receive dictionaries instead of JSON
     connection = JsonConnection(client_socket)
 
-    # send welcome message to client
-    welcome_message = {
+    # send welcome message to client to show connection
+    connection.send({
         "type": "welcome",
         "message": "connected to chess"
-    }
-    connection.send(welcome_message)
+    })
 
-    # recieve a message from client
-    received_message = connection.receive()
-    print(f"client sent: {message}")
+    # wait for join message from the client
+    message = connection.receive()
+    print(f"{color} player sent: {message}")
 
     # we expect "join" type "{name}" message
-    if (received_message.get("type") != "join"):
-        return
+    if (message.get("type") != "join"):
+        # not a join message, inform and error
+        connection.send({
+            "type": "error",
+            "message": "expected a join message"
+        })
+
+        # close the socket and raise error
+        client_socket.close()
+        raise ValueError("client didn't send a join message")
     
-    # get the name
+    # get the player name
     player_name = received_message.get("name")
 
-    # confirm name was received
-    received_message = {
-        "type": "received",
-        "message": f"server received name {player_name}"
-    }
-    connection.send(received_message)
+    # confirm name was received, tell player the color
+    connection.send({
+        "type": "color_and_name",
+        "color": color,
+        "message": f"server received name {player_name}, you are playing {color}"
+    })
+
+    return client_socket, connection, player_name, address
+
 
 def start_server(host: str, port: int) -> None:
     '''
     start the TCP server
     '''
 
+    # IPv4, TCP and close when done automatically
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         # using parameters for socket 
         server_socket.bind((host, port))
 
         # listen for TCP connections
-        server_socket.listen()
+        server_socket.listen(2)
 
         print(f"server listening on {host}:{port}")
 
-        # wait until a client connects
-        client_socket, address = server_socket.accept()
+        # first connection
+        white_socket, white_connection, white_name, white_address = accept_player(server_socket, "white")
+        print(f"{white_name} connected from {white_address}, and will play white")
+
+        # second connection
+        black_socket, black_connection, black_name, black_address = accept_player(server_socket, "black")
+        print(f"{black_name} connected from {black_address}, and will play black")
+        print("both players connected")
 
         # handle client until disconnect
-        with client_socket:
-            handle_client(client_socket, address)
-        
-        print("client disconnected, server off")
+        with white_socket, black_socket:
+
+            white_connection.send({
+                "type": "game_start",
+                "color": "white",
+                "opponent": black_name
+            })
+
+            black_connection.send({
+                "type": "game_start",
+                "color": "black",
+                "opponent": white_name
+            })
+
+            #
+            #
+            # CHESS WILL START HERE
+            #
+            #
 
 def main() -> None:
     '''
@@ -69,8 +107,8 @@ def main() -> None:
 
     # reading host and port from console, setting options
     parser = argparse.ArgumentParser(description="console chess server")
-    parser.add_arguement("--host", default="127.0.0.1")
-    parser.add_arguement("--port", type=int, default=5000)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5000)
 
     # actually read
     args = parser.parse_args()
